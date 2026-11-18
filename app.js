@@ -5,9 +5,10 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
   window.__alarabSiteAppInitialized = true;
 
   var pageNames = { home: 'الرئيسية', men: 'قسم الرجال', women: 'قسم النساء', packages: 'الباقات', info: 'معلومات القصر' };
-  var galleryFilters = ['all', 'hall', 'stage', 'details', 'hospitality', 'dining'];
+  var galleryFilters = ['all', 'hall', 'stage', 'details', 'hospitality', 'dining', 'bride'];
   var packageFilters = ['all', 'men', 'women'];
   var modalRecords = new Map();
+  var videoRecords = new WeakMap();
   var state = { offline: false, page: '', route: '', gallery: { filter: 'all', limit: 6, items: [], viewer: [], index: 0 }, audience: 'all', touch: null };
 
   function one(selector, scope) { return (scope || document).querySelector(selector); }
@@ -30,6 +31,161 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
       var src = resolveAsset(image.getAttribute('data-asset'));
       if (src && image.getAttribute('src') !== src) image.setAttribute('src', src);
     });
+    all('video[data-poster-asset]', scope).forEach(function (video) {
+      var poster = resolveAsset(video.getAttribute('data-poster-asset'));
+      if (poster && video.getAttribute('poster') !== poster) video.setAttribute('poster', poster);
+    });
+  }
+
+  function videoRecord(video) {
+    var record = videoRecords.get(video);
+    if (!record) {
+      var player = video.closest('.video-player') || video.parentElement;
+      var button = player && one('[data-video-play]', player);
+      record = { player: player, button: button, label: button && button.textContent.trim() || 'شاهد الفيديو', prepared: false, failed: false, attempt: 0, pending: false, transferFocus: false };
+      videoRecords.set(video, record);
+    }
+    return record;
+  }
+  function videoStatus(video, status) {
+    var record = videoRecord(video);
+    if (record.player) {
+      record.player.setAttribute('data-video-state', status);
+      record.player.setAttribute('aria-busy', String(status === 'loading'));
+    }
+  }
+  function clearVideoError(video) {
+    var record = videoRecord(video), message = record.player && one('[data-video-error]', record.player);
+    if (message) { message.hidden = true; message.textContent = ''; }
+  }
+  function showVideoError(video) {
+    if (!video.isConnected) return;
+    var record = videoRecord(video);
+    record.failed = true;
+    record.pending = false;
+    videoStatus(video, 'error');
+    var message = record.player && one('[data-video-error]', record.player);
+    if (!message && record.player) {
+      message = document.createElement('p');
+      message.className = 'video-error';
+      message.setAttribute('data-video-error', '');
+      message.setAttribute('role', 'status');
+      record.player.appendChild(message);
+    }
+    if (message) { message.textContent = 'تعذّر تشغيل الفيديو. حاول مرة أخرى.'; message.hidden = false; }
+    if (record.button) {
+      record.button.hidden = false;
+      record.button.disabled = false;
+      record.button.textContent = 'إعادة المحاولة';
+      if (record.transferFocus) focusElement(record.button);
+    }
+    record.transferFocus = false;
+  }
+  function pauseVideos(except, reset) {
+    all('video').forEach(function (video) {
+      if (video === except) return;
+      var record = videoRecords.get(video);
+      if (record) { record.attempt += 1; record.pending = false; record.transferFocus = false; }
+      try { video.pause(); } catch (_) { /* A video may still be preparing. */ }
+      if (reset) {
+        try { if (video.readyState) video.currentTime = 0; } catch (_) { /* Seeking is unavailable before metadata. */ }
+        if (state.offline && record && record.prepared) {
+          video.removeAttribute('src');
+          all('source', video).forEach(function (source) { source.removeAttribute('src'); });
+          record.prepared = false;
+          try { video.load(); } catch (_) { /* The departing element can be discarded. */ }
+        }
+      }
+      if (record) {
+        videoStatus(video, reset ? 'idle' : 'paused');
+        if (record.button) {
+          record.button.disabled = false;
+          if (!record.button.hidden || reset) { record.button.hidden = false; record.button.textContent = record.label; }
+        }
+      }
+    });
+  }
+  function initializeVideos() {
+    all('video[data-video-asset]', root()).forEach(function (video) {
+      var firstVisit = !videoRecords.has(video), record = videoRecord(video);
+      video.preload = 'none';
+      video.playsInline = true;
+      if (state.offline && firstVisit) {
+        // Embedded MP4s stay out of the media element until the user asks to play.
+        video.removeAttribute('src');
+        all('source', video).forEach(function (source) { source.removeAttribute('src'); });
+      }
+      if (record.button) record.button.disabled = false;
+      if (firstVisit) videoStatus(video, 'idle');
+    });
+  }
+  function prepareVideo(video) {
+    var record = videoRecord(video), path = string(video.getAttribute('data-video-asset'));
+    if (!path) return false;
+    if (!record.prepared || record.failed) {
+      var src = resolveAsset(path);
+      if (!src || state.offline && !/^(?:data:video\/|blob:)/i.test(src)) return false;
+      video.src = src;
+      record.prepared = true;
+      record.failed = false;
+      video.load();
+    }
+    return true;
+  }
+  function playVideo(video) {
+    if (!video || !video.isConnected) return;
+    var record = videoRecord(video);
+    if (record.pending) return;
+    pauseVideos(video, false);
+    clearVideoError(video);
+    record.attempt += 1;
+    var attempt = record.attempt;
+    try {
+      if (!prepareVideo(video)) { showVideoError(video); return; }
+      record.pending = true;
+      record.transferFocus = document.activeElement === record.button;
+      videoStatus(video, 'loading');
+      if (record.button) { record.button.hidden = false; record.button.disabled = true; record.button.textContent = 'جارٍ تشغيل الفيديو…'; }
+      var playback = video.play();
+      if (playback && typeof playback.catch === 'function') playback.catch(function (error) {
+        if (attempt !== record.attempt || !video.isConnected) return;
+        record.pending = false;
+        if (error && error.name === 'AbortError') {
+          if (record.button) { record.button.disabled = false; record.button.textContent = record.label; }
+          videoStatus(video, 'paused');
+          return;
+        }
+        showVideoError(video);
+      });
+    } catch (_) { if (attempt === record.attempt) showVideoError(video); }
+  }
+  function onVideoEvent(event) {
+    var video = event.target;
+    if (!video || video.tagName !== 'VIDEO' || !video.hasAttribute('data-video-asset')) return;
+    var record = videoRecord(video);
+    if (event.type === 'play') {
+      pauseVideos(video, false);
+    } else if (event.type === 'playing') {
+      record.prepared = true;
+      record.pending = false;
+      record.failed = false;
+      clearVideoError(video);
+      videoStatus(video, 'playing');
+      if (record.button) {
+        var focused = record.transferFocus || document.activeElement === record.button;
+        record.button.hidden = true;
+        record.button.disabled = false;
+        record.button.textContent = record.label;
+        if (focused) { if (!video.hasAttribute('tabindex')) video.setAttribute('tabindex', '0'); focusElement(video); }
+      }
+      record.transferFocus = false;
+    } else if (event.type === 'error') {
+      if ((record.prepared || !state.offline) && video.getAttribute('src')) showVideoError(video);
+    } else if (event.type === 'pause' || event.type === 'ended') {
+      record.pending = false;
+      videoStatus(video, event.type === 'ended' ? 'ended' : 'paused');
+      if (record.button) record.button.disabled = false;
+    }
   }
   function focusElement(element) {
     if (!element) return;
@@ -232,6 +388,7 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
 
   function initializePage(section) {
     hydrateAssets(document);
+    initializeVideos();
     preparePageLinks();
     initializeGallery();
     applyPackageFilter(section || 'all');
@@ -240,6 +397,7 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
   function renderOfflinePage(key, section) {
     var data = offlineData(), target = one('#page-root'), page = data && data.pages && data.pages[key];
     if (!target || !page || typeof page.body !== 'string') return false;
+    pauseVideos(null, true);
     closeOwnedDialogs();
     target.innerHTML = page.body;
     state.page = key;
@@ -267,6 +425,7 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
     var target = event.target instanceof Element ? event.target : event.target.parentElement;
     if (!target) return;
     var link = target.closest('a[data-page]');
+    if (link && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && (!link.target || link.target === '_self')) pauseVideos(null, false);
     if (link && state.offline && !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && !link.hasAttribute('download') && (!link.target || link.target === '_self')) {
       var key = pageKey(link.getAttribute('data-page'));
       if (key) { event.preventDefault(); navigateOffline(key, key === 'packages' ? linkAudience(link) : 'all'); return; }
@@ -286,7 +445,14 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
         }
       }
     }
-    var button = target.closest('[data-gallery-filter]');
+    var button = target.closest('[data-video-play]');
+    if (button) {
+      event.preventDefault();
+      var player = button.closest('.video-player') || button.parentElement;
+      playVideo(player && one('video[data-video-asset]', player));
+      return;
+    }
+    button = target.closest('[data-gallery-filter]');
     if (button) { event.preventDefault(); setGalleryFilter(button.getAttribute('data-gallery-filter')); return; }
     button = target.closest('[data-gallery-more]');
     if (button) { event.preventDefault(); moreGallery(); return; }
@@ -335,6 +501,7 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
     state.page = pageKey(document.body.getAttribute('data-page')) || 'home';
     document.addEventListener('click', onClick);
     document.addEventListener('keydown', onKeydown);
+    ['play', 'playing', 'pause', 'ended', 'error'].forEach(function (name) { document.addEventListener(name, onVideoEvent, true); });
     document.addEventListener('touchstart', onTouchStart, { passive: true });
     document.addEventListener('touchend', onTouchEnd, { passive: true });
     document.addEventListener('touchcancel', function () { state.touch = null; }, { passive: true });
@@ -343,6 +510,8 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
     }, true);
     window.addEventListener('popstate', handleLocation);
     window.addEventListener('hashchange', handleLocation);
+    window.addEventListener('pagehide', function () { pauseVideos(null, false); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) pauseVideos(null, false); });
     if (state.offline) {
       try { history.scrollRestoration = 'manual'; } catch (_) { /* Optional browser support. */ }
       var route = readRoute() || { page: state.page, audience: state.page === 'packages' ? queryAudience() : 'all' };
