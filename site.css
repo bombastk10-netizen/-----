@@ -82,3 +82,10 @@
 .home-hero .home-video-portrait{width:100%;max-width:340px;height:auto;min-height:0;aspect-ratio:var(--home-video-ratio);justify-self:center;align-self:start}
 @media(max-width:600px){.home-hero .home-video-portrait{width:100%;max-width:360px;min-height:0;height:auto;align-self:center}}
 .home-hero .home-video-visual:not(.home-video-portrait){width:100%;height:auto;min-height:0;aspect-ratio:var(--home-video-ratio);align-self:center}
+
+.header-contact-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.header-whatsapp{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:9px 14px;border:1px solid #2e6953;border-radius:8px;background:var(--green);color:#fff;font-size:11px;white-space:nowrap}.header-whatsapp svg{width:17px;height:17px;flex:none}.header-whatsapp:hover{background:#245b46}.header-whatsapp:focus-visible{outline:2px solid var(--gold);outline-offset:3px}.contact-whatsapp{margin-bottom:18px;font-size:14px}.contact-whatsapp svg{width:20px;height:20px}.footer-contact-actions{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.footer-contact-actions a{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:12px;color:#456446}.footer-contact-actions svg{width:17px;height:17px}
+@media(max-width:1050px){.header-whatsapp .whatsapp-prefix{display:none}}
+@media(max-width:600px){.header-contact-actions{gap:6px}.header-whatsapp{padding:8px 10px;min-height:38px;font-size:11px;gap:6px}.header-whatsapp svg{width:16px;height:16px}.footer-contact-actions{margin-inline-start:auto;gap:18px}.contact-whatsapp{width:100%}}
+@media(max-width:359px){.header-inner{gap:8px}.header-call{padding:8px}.header-whatsapp{padding:8px}.header-contact-actions{gap:5px}}
+
+.coordination-note{display:grid;gap:6px;margin:12px 0 18px;padding:14px 16px;border-inline-start:3px solid #a88b44;background:#fffdf5;border-radius:6px;color:#526546;font-size:14px;line-height:1.9}.coordination-note strong{color:#735925;font-size:15px;font-weight:600}.coordination-note span{display:block}
