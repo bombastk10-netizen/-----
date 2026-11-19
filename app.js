@@ -1,4 +1,4 @@
-window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر العرب","src":"assets/services-guide.png"},"menu":{"title":"قائمة بوفيه قصر العرب — ١٠٠ شخص","src":"assets/buffet-menu.png"},"original":{"title":"الضيافة والتنسيق في قصر العرب","src":"assets/services-original.png"}};
+window.ALARAB_BROCHURES={};
 (function () {
   'use strict';
   if (window.__alarabSiteAppInitialized) return;
@@ -108,7 +108,8 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
   function initializeVideos() {
     all('video[data-video-asset]', root()).forEach(function (video) {
       var firstVisit = !videoRecords.has(video), record = videoRecord(video);
-      video.preload = 'none';
+      var homeAutoplay = video.hasAttribute('data-home-autoplay');
+      video.preload = homeAutoplay ? 'auto' : 'none';
       video.playsInline = true;
       if (state.offline && firstVisit) {
         // Embedded MP4s stay out of the media element until the user asks to play.
@@ -117,6 +118,19 @@ window.ALARAB_BROCHURES={"guide":{"title":"باقات الضيافة في قصر
       }
       if (record.button) record.button.disabled = false;
       if (firstVisit) videoStatus(video, 'idle');
+      if (homeAutoplay) {
+        video.muted = true;
+        video.defaultMuted = true;
+        video.autoplay = true;
+        video.loop = true;
+        if (prepareVideo(video)) {
+          var playback = video.play();
+          if (playback && typeof playback.catch === 'function') playback.catch(function () {
+            // Native controls remain available if this browser blocks autoplay.
+            videoStatus(video, 'paused');
+          });
+        }
+      }
     });
   }
   function prepareVideo(video) {
